@@ -1,20 +1,21 @@
+# utils.py
+
 import json
-import random
 from pathlib import Path
-from typing import List, Optional, Tuple
+import random
 
 from PIL import Image, ImageDraw, ImageFont
 
 from .config import fortune_config, themes_flag_config
 
 
-def get_copywriting() -> Tuple[str, str]:
+def get_copywriting() -> tuple[str, str]:
     """
     Read the copywriting.json, choice a luck with a random content
     """
     _p: Path = fortune_config.fortune_path / "fortune" / "copywriting.json"
 
-    with open(_p, "r", encoding="utf-8") as f:
+    with open(_p, encoding="utf-8") as f:
         content = json.load(f).get("copywriting")
         luck = random.choice(content)
         title: str = luck.get("good-luck")
@@ -23,34 +24,53 @@ def get_copywriting() -> Tuple[str, str]:
         return title, text
 
 
-def random_basemap(theme: str, spec_path: Optional[str] = None) -> Path:
+def random_basemap(theme: str, spec_path: str | None = None) -> Path:
+    """
+    随机选择一张底图。
+    - 如果指定了 spec_path，直接返回该路径。
+    - 如果主题是 'random'，则执行“两阶段随机”：先随机选一个主题，再从该主题中随机选一张图。
+    - 如果指定了其他主题，则从该主题文件夹中随机选一张图。
+    """
     if isinstance(spec_path, str):
+        # 兼容指定签底的功能
         p: Path = fortune_config.fortune_path / "img" / spec_path
         return p
 
+    base_img_path: Path = fortune_config.fortune_path / "img"
+
     if theme == "random":
-        __p: Path = fortune_config.fortune_path / "img"
-
-        # Each dir is a theme.
-        themes: List[str] = [
-            f.name for f in __p.iterdir() if f.is_dir() and theme_flag_check(f.name)
+        # --- 两阶段随机 ---
+        # 第一阶段：随机选择一个主题
+        available_themes: list[str] = [
+            f.name
+            for f in base_img_path.iterdir()
+            if f.is_dir() and theme_flag_check(f.name)
         ]
-        picked: str = random.choice(themes)
 
-        _p: Path = __p / picked
+        if not available_themes:
+            raise FileNotFoundError("Resource Error: No available themes found!")
 
-        # Each file is a posix path of images directory
-        images_dir: List[Path] = [i for i in _p.iterdir() if i.is_file()]
-        p: Path = random.choice(images_dir)
+        picked_theme_name: str = random.choice(available_themes)
+        theme_path: Path = base_img_path / picked_theme_name
     else:
-        _p: Path = fortune_config.fortune_path / "img" / theme
-        images_dir: List[Path] = [i for i in _p.iterdir() if i.is_file()]
-        p: Path = random.choice(images_dir)
+        # 如果是指定主题，直接使用该主题的路径
+        theme_path: Path = base_img_path / theme
 
-    return p
+    # 第二阶段：从选定的主题文件夹中随机选择一张图片
+    images_in_theme: list[Path] = [
+        f
+        for f in theme_path.iterdir()
+        if f.is_file() and f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif")
+    ]
+    if not images_in_theme:
+        raise FileNotFoundError(
+            f"Resource Error: No images found for theme '{theme_path.name}'!"
+        )
+
+    return random.choice(images_in_theme)
 
 
-def drawing(gid: str, uid: str, theme: str, spec_path: Optional[str] = None) -> Path:
+def drawing(gid: str, uid: str, theme: str, spec_path: str | None = None) -> Path:
     # 1. Random choice a base image
     imgPath: Path = random_basemap(theme, spec_path)
     img: Image.Image = Image.open(imgPath).convert("RGB")
@@ -68,11 +88,16 @@ def drawing(gid: str, uid: str, theme: str, spec_path: Optional[str] = None) -> 
         "text": f"{fortune_config.fortune_path}/font/sakura.ttf",
     }
     ttfront = ImageFont.truetype(fontPath["title"], font_size)
-    font_length = ttfront.getsize(title)
+
+    # Pillow 10.0.0+ 删除了 getsize，使用 getbbox 替代
+    title_bbox = ttfront.getbbox(title)
+    title_width = title_bbox[2] - title_bbox[0]
+    title_height = title_bbox[3] - title_bbox[1]
+
     draw.text(
         (
-            image_font_center[0] - font_length[0] / 2,
-            image_font_center[1] - font_length[1] / 2,
+            image_font_center[0] - title_width / 2,
+            image_font_center[1] - title_height / 2,
         ),
         title,
         fill=color,
@@ -109,47 +134,44 @@ def drawing(gid: str, uid: str, theme: str, spec_path: Optional[str] = None) -> 
     return outPath
 
 
-def decrement(text: str) -> Tuple[int, List[str]]:
+def decrement(text: str) -> tuple[int, list[str]]:
     """
     Split the text, return the number of columns and text list
     TODO: Now, it ONLY fit with 2 columns of text
     """
     length: int = len(text)
-    result: List[str] = []
+    result: list[str] = []
     cardinality = 9
     if length > 4 * cardinality:
-        raise Exception
+        raise ValueError("Text is too long to fit in the image.")
 
     col_num: int = 1
     while length > cardinality:
         col_num += 1
         length -= cardinality
 
-    # Optimize for two columns
     space = " "
-    length = len(text)  # Value of length is changed!
+    length = len(text)
 
     if col_num == 2:
+        half_len = length // 2
         if length % 2 == 0:
-            # even
-            fillIn = space * int(9 - length / 2)
+            fillIn = space * (9 - half_len)
             return col_num, [
-                text[: int(length / 2)] + fillIn,
-                fillIn + text[int(length / 2) :],
+                text[:half_len] + fillIn,
+                fillIn + text[half_len:],
             ]
         else:
-            # odd number
-            fillIn = space * int(9 - (length + 1) / 2)
+            fillIn = space * (9 - (half_len + 1))
             return col_num, [
-                text[: int((length + 1) / 2)] + fillIn,
-                fillIn + space + text[int((length + 1) / 2) :],
+                text[: half_len + 1] + fillIn,
+                fillIn + space + text[half_len + 1 :],
             ]
 
     for i in range(col_num):
-        if i == col_num - 1 or col_num == 1:
-            result.append(text[i * cardinality :])
-        else:
-            result.append(text[i * cardinality : (i + 1) * cardinality])
+        start = i * cardinality
+        end = (i + 1) * cardinality
+        result.append(text[start:end])
 
     return col_num, result
 
@@ -158,4 +180,4 @@ def theme_flag_check(theme: str) -> bool:
     """
     check wether a theme is enabled in themes_flag_config
     """
-    return themes_flag_config.dict().get(theme + "_flag", False)
+    return themes_flag_config.model_dump().get(theme + "_flag", False)
