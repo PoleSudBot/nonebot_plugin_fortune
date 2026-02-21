@@ -26,13 +26,17 @@ from nonebot_plugin_apscheduler import scheduler  # isort:skip
 
 __fortune_version__ = "v0.4.12_mod"  # 加上后缀以示区分
 __fortune_usages__ = """
-[今日运势/抽签/运势] 一般抽签
-[xx抽签]     指定主题抽签
-[指定xx签] 指定特殊角色签底，需要自己尝试哦~
-[设置xx签] 设置群抽签主题
-[重置主题] 重置群抽签主题
-[主题列表] 查看可选的抽签主题
-[查看主题] 查看群抽签主题""".strip()
+## 🔮 今日运势
+
+- **[指定主题]抽签** - 抽取一次指定主题的专属签文
+- **今日运势** - 随机抽取一次运势签文
+- **指定[主题]签** - 指定群抽签主题
+- **随机抽签** - 随机抽取一次签文
+- **主题列表** - 查看当前已有的抽签主题
+- **查看主题** - 查看群当前抽签主题
+- **签底[主题]** - 尝试下载对应主题的签底
+""".strip()
+
 
 __plugin_meta__ = PluginMetadata(
     name="今日运势",
@@ -44,6 +48,7 @@ __plugin_meta__ = PluginMetadata(
     extra={
         "author": "KafCoppelia <k740677208@gmail.com>",
         "version": __fortune_version__,
+        "menu_type": "功能",
     },
 )
 
